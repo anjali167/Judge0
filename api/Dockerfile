@@ -19,7 +19,10 @@ COPY prisma ./prisma
 # src/ is kept alongside dist/ (not just build output) so `npm run seed`
 # (tsx prisma/seed.ts, which imports straight from src/*.ts) works inside
 # the running container — tsx is a runtime dependency for exactly this.
-COPY src ./src
+# Copied FROM THE BUILD STAGE (not the build context) because that's where
+# `npx prisma generate` actually wrote src/generated/prisma — the raw
+# source tree on disk never has it (it's gitignored, generated-only).
+COPY --from=build /app/src ./src
 COPY tsconfig.json ./
 COPY --from=build /app/dist ./dist
 EXPOSE 4000
