@@ -7,6 +7,8 @@ import type { ContestDetail, InstanceInfo } from "@/lib/types";
 import { Countdown } from "@/components/Countdown";
 import { Leaderboard } from "@/components/Leaderboard";
 import { QuizPanel } from "@/components/QuizPanel";
+import { VirtualPanel } from "@/components/VirtualPanel";
+import { TelemetryReporter } from "@/components/TelemetryReporter";
 
 const DIFF = ["", "Intro", "Easy", "Medium", "Hard", "Expert"];
 
@@ -75,7 +77,9 @@ export default function ContestPage({ params }: { params: Promise<{ id: string }
             </Link>
           </p>
         )}
+        {contest.status === "ended" && <VirtualPanel contestId={contest.id} />}
       </div>
+      <TelemetryReporter contestId={contest.id} active={contest.status === "running"} />
 
       {contest.status === "upcoming" ? (
         <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-500 dark:border-neutral-700">

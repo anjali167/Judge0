@@ -73,6 +73,9 @@ Judge0's own DB holds only transient judging state — no backup needed.
 | Release an editorial | `POST /admin/problems/:id/release-editorial` |
 | Check judge health | `GET /admin/judge/health` |
 | Instance settings | `PUT /admin/settings` (super-admin): `instance_name`, `signup_mode` (`open`/`invite`), `modules` (`{quiz, mostImproved, discussion}` toggles), `most_improved_k` |
+| Plagiarism scan | After a contest: `POST /admin/contests/:id/plagiarism-scan` (optional `{threshold: 0.75}`); review queue at `GET /admin/contests/:id/plagiarism-flags`; verdicts via `PUT /admin/plagiarism-flags/:id {status: DISMISSED\|CONFIRMED, reviewNote}`; side-by-side sources at `GET /admin/plagiarism-flags/:id/sources`. Flags are signals — scoring is never changed automatically. |
+| Cheating signals | `GET /admin/contests/:id/telemetry` — per-participant tab-switch and paste counts collected during the live window. Signals only; participants are never blocked. |
+| Virtual attempts | Participants self-serve from an ended contest's page. Virtual submissions never touch the official leaderboard or ratings. |
 
 All admin actions are recorded in `audit_log`.
 

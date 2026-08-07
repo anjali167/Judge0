@@ -346,6 +346,96 @@ adminRouter.put("/settings", requireRole("SUPER_ADMIN"), async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Plagiarism (spec 5.6: flags are review signals, never auto-punishment) ---------- */
+
+adminRouter.post("/contests/:id/plagiarism-scan", async (req, res) => {
+  const threshold = typeof req.body?.threshold === "number" ? req.body.threshold : undefined;
+  const { scanContest } = await import("../plagiarism/service.js");
+  const result = await scanContest(req.params.id, threshold);
+  await audit(req.user!.id, "plagiarism.scan", req.params.id, result);
+  res.json(result);
+});
+
+adminRouter.get("/contests/:id/plagiarism-flags", async (req, res) => {
+  const flags = await prisma.plagiarismFlag.findMany({
+    where: { contestId: req.params.id },
+    orderBy: [{ status: "asc" }, { similarity: "desc" }],
+  });
+  const userIds = [...new Set(flags.flatMap((f) => [f.userA, f.userB]))];
+  const problemIds = [...new Set(flags.map((f) => f.problemId))];
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, name: true, externalId: true },
+  });
+  const problems = await prisma.problem.findMany({
+    where: { id: { in: problemIds } },
+    select: { id: true, title: true, slug: true },
+  });
+  const uMap = new Map(users.map((u) => [u.id, u]));
+  const pMap = new Map(problems.map((p) => [p.id, p]));
+  res.json(
+    flags.map((f) => ({
+      ...f,
+      userA: uMap.get(f.userA) ?? { id: f.userA },
+      userB: uMap.get(f.userB) ?? { id: f.userB },
+      problem: pMap.get(f.problemId) ?? { id: f.problemId },
+    }))
+  );
+});
+
+/** Review a flag: DISMISSED or CONFIRMED, with an optional note. */
+adminRouter.put("/plagiarism-flags/:id", async (req, res) => {
+  const parsed = z
+    .object({ status: z.enum(["PENDING", "DISMISSED", "CONFIRMED"]), reviewNote: z.string().max(2000).optional() })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid payload" });
+  const flag = await prisma.plagiarismFlag.update({
+    where: { id: req.params.id },
+    data: parsed.data,
+  });
+  await audit(req.user!.id, "plagiarism.review", flag.id, parsed.data);
+  res.json(flag);
+});
+
+/** Side-by-side sources for a flag (organizer only — full source view). */
+adminRouter.get("/plagiarism-flags/:id/sources", async (req, res) => {
+  const flag = await prisma.plagiarismFlag.findUnique({ where: { id: req.params.id } });
+  if (!flag) return res.status(404).json({ error: "not found" });
+  const [a, b] = await Promise.all([
+    prisma.submission.findUnique({
+      where: { id: flag.submissionA },
+      select: { id: true, source: true, language: true, createdAt: true, user: { select: { name: true } } },
+    }),
+    prisma.submission.findUnique({
+      where: { id: flag.submissionB },
+      select: { id: true, source: true, language: true, createdAt: true, user: { select: { name: true } } },
+    }),
+  ]);
+  res.json({ flag, a, b });
+});
+
+/* ---------- Telemetry summary (spec 5.6: signals, not blocks) ---------- */
+
+adminRouter.get("/contests/:id/telemetry", async (req, res) => {
+  const events = await prisma.telemetryEvent.groupBy({
+    by: ["userId", "kind"],
+    where: { contestId: req.params.id },
+    _count: true,
+  });
+  const userIds = [...new Set(events.map((e) => e.userId))];
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, name: true, externalId: true },
+  });
+  const uMap = new Map(users.map((u) => [u.id, u]));
+  const byUser: Record<string, { user: unknown; TAB_HIDDEN: number; TAB_VISIBLE: number; PASTE: number }> = {};
+  for (const e of events) {
+    byUser[e.userId] ??= { user: uMap.get(e.userId), TAB_HIDDEN: 0, TAB_VISIBLE: 0, PASTE: 0 };
+    byUser[e.userId][e.kind] = e._count;
+  }
+  res.json(Object.values(byUser).sort((x, y) => y.TAB_HIDDEN + y.PASTE - (x.TAB_HIDDEN + x.PASTE)));
+});
+
 /* ---------- Judge health & exports ---------- */
 
 adminRouter.get("/judge/health", async (_req, res) => {

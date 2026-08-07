@@ -181,3 +181,44 @@ CREATE TABLE "announcements" (
     "active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ==== Phase 3 additions ====
+
+CREATE TYPE "FlagStatus" AS ENUM ('PENDING', 'DISMISSED', 'CONFIRMED');
+CREATE TYPE "TelemetryKind" AS ENUM ('TAB_HIDDEN', 'TAB_VISIBLE', 'PASTE');
+
+ALTER TABLE "submissions" ADD COLUMN "virtual" BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE "plagiarism_flags" (
+    "id" TEXT PRIMARY KEY,
+    "contest_id" TEXT NOT NULL,
+    "problem_id" TEXT NOT NULL,
+    "submission_a" TEXT NOT NULL,
+    "submission_b" TEXT NOT NULL,
+    "user_a" TEXT NOT NULL,
+    "user_b" TEXT NOT NULL,
+    "similarity" DOUBLE PRECISION NOT NULL,
+    "status" "FlagStatus" NOT NULL DEFAULT 'PENDING',
+    "review_note" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE ("contest_id", "problem_id", "submission_a", "submission_b")
+);
+CREATE INDEX "plagiarism_flags_contest_id_status_idx" ON "plagiarism_flags"("contest_id", "status");
+
+CREATE TABLE "telemetry_events" (
+    "id" TEXT PRIMARY KEY,
+    "user_id" TEXT NOT NULL,
+    "contest_id" TEXT NOT NULL,
+    "kind" "TelemetryKind" NOT NULL,
+    "meta" JSONB,
+    "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX "telemetry_events_contest_id_user_id_at_idx" ON "telemetry_events"("contest_id", "user_id", "at");
+
+CREATE TABLE "virtual_participations" (
+    "id" TEXT PRIMARY KEY,
+    "user_id" TEXT NOT NULL,
+    "contest_id" TEXT NOT NULL,
+    "started_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE ("user_id", "contest_id")
+);

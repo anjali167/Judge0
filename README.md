@@ -9,7 +9,7 @@ real-time leaderboard with freeze + public sharing.
 solved, verified by test cases — and that performance is immediately visible on the
 leaderboard. Everything organization-specific is configuration, not code.
 
-## Status: Phase 1 + Phase 2
+## Status: Phase 1 + 2 + 3 complete
 
 | Area | Status |
 |---|---|
@@ -28,7 +28,11 @@ leaderboard. Everything organization-specific is configuration, not code.
 | Leaderboard freeze (final N min) + public no-login leaderboard URL | ✅ |
 | Announcements banner · post-contest discussion · instance settings & branding | ✅ |
 | Cross-contest participant reports (CSV) | ✅ |
-| Plagiarism pipeline, tab/paste telemetry, virtual participation, badges | Phase 3 |
+| Plagiarism: MOSS-style winnowing similarity, organizer review queue (never auto-punish) | ✅ |
+| Tab/paste telemetry during contests (signals for organizers, never blocking) | ✅ |
+| Virtual participation: individual-timer unrated re-runs with would-be rank | ✅ |
+| Submission diff view, profile page with badges/streaks/rating graph | ✅ |
+| Load-tested: 300-submission burst, 0 rejected, p95 643ms ([report](docs/load-test-report.md)) | ✅ |
 
 ## Quick start (development)
 

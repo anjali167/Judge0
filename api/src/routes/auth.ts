@@ -7,11 +7,15 @@ import { requireAuth, signToken } from "../auth.js";
 
 export const authRouter = Router();
 
+// Keyed by email+IP so a shared campus NAT doesn't lock everyone out when
+// 150 participants sign in at contest start.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) =>
+    `${(req.body as { email?: string })?.email ?? ""}|${req.ip ?? ""}`,
 });
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });

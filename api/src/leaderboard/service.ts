@@ -44,6 +44,7 @@ export async function buildLeaderboard(
   const submissions = await prisma.submission.findMany({
     where: {
       contestId,
+      virtual: false, // virtual attempts never touch the official board
       verdict: { notIn: ["PENDING", "RUNNING"] },
       ...(cutoff ? { createdAt: { lt: cutoff } } : {}),
     },

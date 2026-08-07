@@ -254,6 +254,7 @@ model Submission {
   execTimeMs  Int?     @map("exec_time_ms") // max across cases
   memoryKb    Int?     @map("memory_kb")
   compileOutput String? @map("compile_output") // shown only for CE
+  virtual       Boolean  @default(false) // virtual participation attempt (unrated)
   createdAt   DateTime @default(now()) @map("created_at")
 
   results SubmissionResult[]
@@ -293,4 +294,56 @@ model AuditLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("audit_log")
+}
+
+enum FlagStatus {
+  PENDING
+  DISMISSED
+  CONFIRMED
+}
+
+model PlagiarismFlag {
+  id           String     @id @default(cuid())
+  contestId    String     @map("contest_id")
+  problemId    String     @map("problem_id")
+  submissionA  String     @map("submission_a")
+  submissionB  String     @map("submission_b")
+  userA        String     @map("user_a")
+  userB        String     @map("user_b")
+  similarity   Float // 0..1
+  status       FlagStatus @default(PENDING)
+  reviewNote   String?    @map("review_note")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@unique([contestId, problemId, submissionA, submissionB])
+  @@index([contestId, status])
+  @@map("plagiarism_flags")
+}
+
+enum TelemetryKind {
+  TAB_HIDDEN
+  TAB_VISIBLE
+  PASTE
+}
+
+model TelemetryEvent {
+  id        String        @id @default(cuid())
+  userId    String        @map("user_id")
+  contestId String        @map("contest_id")
+  kind      TelemetryKind
+  meta      Json?
+  at        DateTime      @default(now())
+
+  @@index([contestId, userId, at])
+  @@map("telemetry_events")
+}
+
+model VirtualParticipation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  contestId String   @map("contest_id")
+  startedAt DateTime @default(now()) @map("started_at")
+
+  @@unique([userId, contestId])
+  @@map("virtual_participations")
 }

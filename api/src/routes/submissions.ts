@@ -10,7 +10,13 @@ import { config } from "../config.js";
 
 export const submissionsRouter = Router();
 
-const submitLimiter = rateLimit({ windowMs: 60_000, limit: 10 });
+// Keyed per-user, not per-IP: campus labs share NAT IPs (spec's 150-200
+// concurrent users may arrive from a handful of addresses).
+const submitLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  keyGenerator: (req) => req.user?.id ?? req.ip ?? "anon",
+});
 
 const submitSchema = z.object({
   problemId: z.string(),
@@ -50,6 +56,7 @@ submissionsRouter.post("/", requireAuth, submitLimiter, async (req, res) => {
   if (!problem) return res.status(404).json({ error: "problem not found" });
 
   let effectiveContestId: string | null = null;
+  let isVirtual = false;
   if (contestId) {
     const contest = await prisma.contest.findUnique({
       where: { id: contestId },
@@ -60,8 +67,18 @@ submissionsRouter.post("/", requireAuth, submitLimiter, async (req, res) => {
       return res.status(400).json({ error: "problem is not part of this contest" });
     }
     if (now < contest.startsAt) return res.status(403).json({ error: "contest has not started" });
-    // After the end: allow, but as practice (uncounted) — simplest late policy for MVP
-    effectiveContestId = now <= contest.endsAt ? contestId : null;
+    if (now <= contest.endsAt) {
+      effectiveContestId = contestId;
+    } else {
+      // Post-contest: count toward an active virtual attempt if one is running,
+      // otherwise it's untracked practice.
+      const { activeVirtual } = await import("./virtual.js");
+      const vp = await activeVirtual(userId, contestId);
+      if (vp?.running) {
+        effectiveContestId = contestId;
+        isVirtual = true;
+      }
+    }
   }
 
   const submission = await prisma.submission.create({
@@ -69,6 +86,7 @@ submissionsRouter.post("/", requireAuth, submitLimiter, async (req, res) => {
       userId,
       problemId,
       contestId: isRun ? null : effectiveContestId,
+      virtual: !isRun && isVirtual,
       language,
       source,
       verdict: "PENDING",

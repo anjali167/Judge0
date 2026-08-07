@@ -12,10 +12,14 @@ import { adminRouter } from "./routes/admin.js";
 import { publicRouter } from "./routes/public.js";
 import { quizRouter } from "./routes/quiz.js";
 import { commentsRouter } from "./routes/comments.js";
+import { telemetryRouter } from "./routes/telemetry.js";
+import { virtualRouter } from "./routes/virtual.js";
+import { profileRouter } from "./routes/profile.js";
 import { wireLeaderboardBroadcast, buildLeaderboard } from "./leaderboard/service.js";
 import { LANGUAGES } from "./judge/judge0.js";
 
 const app = express();
+app.set("trust proxy", 1); // behind Caddy/Nginx: use X-Forwarded-For for rate-limit keys
 app.use(cors({ origin: config.webOrigin }));
 app.use(express.json({ limit: "2mb" }));
 
@@ -32,6 +36,9 @@ app.use("/submissions", submissionsRouter);
 app.use("/admin", adminRouter);
 app.use(quizRouter);
 app.use(commentsRouter);
+app.use(telemetryRouter);
+app.use(virtualRouter);
+app.use(profileRouter);
 
 // central error handler — never leak stack traces
 app.use(

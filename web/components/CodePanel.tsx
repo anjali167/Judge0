@@ -9,6 +9,7 @@ import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
 import type { SubmissionDetail, SubmissionListItem } from "@/lib/types";
 import { VerdictBadge } from "./VerdictBadge";
+import { DiffView } from "./DiffView";
 
 const Monaco = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -33,6 +34,8 @@ export function CodePanel({ problemId, contestId }: { problemId: string; contest
   const [result, setResult] = useState<SubmissionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<SubmissionListItem[]>([]);
+  const [diffPick, setDiffPick] = useState<string[]>([]);
+  const [diffPair, setDiffPair] = useState<[string, string] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const touched = useRef(false);
 
@@ -165,12 +168,31 @@ export function CodePanel({ problemId, contestId }: { problemId: string; contest
       )}
 
       {history.length > 0 && (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-neutral-500">My submissions ({history.length})</summary>
+        <details className="text-sm" open={diffPair !== null}>
+          <summary className="cursor-pointer text-neutral-500">
+            My submissions ({history.length})
+            {history.length > 1 && (
+              <span className="ml-2 text-xs">— tick two to compare</span>
+            )}
+          </summary>
+          {diffPair && <div className="mt-2"><DiffView idA={diffPair[0]} idB={diffPair[1]} onClose={() => setDiffPair(null)} /></div>}
           <table className="mt-2 w-full">
             <tbody>
               {history.map((s) => (
                 <tr key={s.id} className="border-t border-neutral-200 dark:border-neutral-800">
+                  <td className="py-1.5 pr-2">
+                    <input
+                      type="checkbox"
+                      checked={diffPick.includes(s.id)}
+                      onChange={() => {
+                        const next = diffPick.includes(s.id)
+                          ? diffPick.filter((x) => x !== s.id)
+                          : [...diffPick.slice(-1), s.id];
+                        setDiffPick(next);
+                        setDiffPair(next.length === 2 ? [next[0], next[1]] : null);
+                      }}
+                    />
+                  </td>
                   <td className="py-1.5 pr-3"><VerdictBadge verdict={s.verdict} /></td>
                   <td className="py-1.5 pr-3">{s.language}</td>
                   <td className="py-1.5 pr-3">{s.maxScore > 0 ? `${s.score}/${s.maxScore}` : "—"}</td>

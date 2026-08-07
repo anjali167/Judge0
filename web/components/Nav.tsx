@@ -27,6 +27,9 @@ export function Nav() {
         <Link href="/problems" className="text-sm text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white">
           Practice
         </Link>
+        <Link href="/profile" className="text-sm text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white">
+          Profile
+        </Link>
         <div className="ml-auto flex items-center gap-4 text-sm">
           {user ? (
             <>
