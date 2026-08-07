@@ -394,10 +394,14 @@ async function main() {
     await prisma.contest.create({
       data: {
         title: "Weekly Challenge #1",
-        description: "4 problems, 3 hours. 2 partial-scored, 2 binary — good luck!",
+        description:
+          "4 problems + a 3-question quiz, 3 hours. Leaderboard freezes for the final 15 minutes.",
+        type: "MIXED",
         startsAt: nextSunday,
         endsAt: nextEnd,
         scoringMode: "PARTIAL",
+        freezeMin: 15,
+        publicToken: "demo-weekly-1",
         problems: {
           create: [
             { problemId: bySlug["max-of-list"], points: 100, order: 1 },
@@ -406,6 +410,58 @@ async function main() {
             { problemId: bySlug["coin-change-min"], points: 100, order: 4 },
           ],
         },
+        quizQuestions: {
+          create: [
+            {
+              ordinal: 1,
+              kind: "SINGLE",
+              promptMd: "What is the worst-case time complexity of binary search on a sorted array of n elements?",
+              options: [
+                { id: "a", text: "O(n)" },
+                { id: "b", text: "O(log n)" },
+                { id: "c", text: "O(n log n)" },
+                { id: "d", text: "O(1)" },
+              ],
+              answer: ["b"],
+              marks: 4,
+              negativeMarks: 1,
+            },
+            {
+              ordinal: 2,
+              kind: "CODE_OUTPUT",
+              promptMd: "What does this Python snippet print?",
+              codeMd: 'x = [1, 2, 3]\ny = x\ny.append(4)\nprint(len(x))',
+              options: [
+                { id: "a", text: "3" },
+                { id: "b", text: "4" },
+                { id: "c", text: "TypeError" },
+                { id: "d", text: "None" },
+              ],
+              answer: ["b"],
+              marks: 4,
+              negativeMarks: 1,
+            },
+            {
+              ordinal: 3,
+              kind: "NUMERIC",
+              promptMd: "A complete binary tree has 1023 nodes. What is its height (root at height 0)?",
+              options: [],
+              answer: { value: 9, tolerance: 0 },
+              marks: 4,
+              negativeMarks: 0,
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  const annExists = await prisma.announcement.findFirst({ where: { title: "Welcome!" } });
+  if (!annExists) {
+    await prisma.announcement.create({
+      data: {
+        title: "Welcome!",
+        body: "Weekly Challenge #1 runs Sunday 10:00. The public leaderboard link works without login — share it freely.",
       },
     });
   }

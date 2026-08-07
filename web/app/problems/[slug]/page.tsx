@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { api } from "@/lib/api";
 import type { ProblemDetail } from "@/lib/types";
 import { CodePanel } from "@/components/CodePanel";
+import { Discussion } from "@/components/Discussion";
 
 const DIFF = ["", "Intro", "Easy", "Medium", "Hard", "Expert"];
 
@@ -58,6 +59,8 @@ export default function ProblemPage({ params }: { params: Promise<{ slug: string
             </article>
           </details>
         )}
+
+        <Discussion problemId={problem.id} />
       </div>
 
       <div>

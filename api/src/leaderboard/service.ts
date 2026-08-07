@@ -1,32 +1,52 @@
 /**
- * Leaderboard service: loads contest submissions, delegates ordering to the
- * pure standings module, caches in Redis, and broadcasts over Socket.IO.
+ * Leaderboard service: loads contest submissions (code + quiz), applies the
+ * freeze window, delegates ordering to the pure standings module, caches in
+ * Redis, and broadcasts over Socket.IO.
  */
 import type { Server } from "socket.io";
 import { prisma } from "../db.js";
 import { redis } from "../redis.js";
-import { computeStandings, type StandingRow } from "./standings.js";
+import {
+  computeStandings,
+  freezeCutoff,
+  type StandingRow,
+  type StandingSubmission,
+} from "./standings.js";
 import { LEADERBOARD_CHANNEL } from "../judge/worker.js";
 import { makeQueueConnection } from "../redis.js";
 
 const CACHE_TTL_SEC = 5;
 
+/** Synthetic "problem" id under which a contest's quiz section scores appear. */
+export const QUIZ_ITEM_ID = "quiz";
+
 export interface LeaderboardPayload {
   contestId: string;
   generatedAt: string;
+  frozen: boolean;
+  frozenAt: string | null;
   rows: (StandingRow & { name: string; externalId: string | null; groupName: string | null })[];
 }
 
-export async function buildLeaderboard(contestId: string): Promise<LeaderboardPayload | null> {
-  const cacheKey = `lb:${contestId}`;
-  const cached = await redis.get(cacheKey);
-  if (cached) return JSON.parse(cached) as LeaderboardPayload;
-
+export async function buildLeaderboard(
+  contestId: string,
+  opts: { ignoreFreeze?: boolean } = {}
+): Promise<LeaderboardPayload | null> {
   const contest = await prisma.contest.findUnique({ where: { id: contestId } });
   if (!contest) return null;
 
+  const now = new Date();
+  const cutoff = opts.ignoreFreeze ? null : freezeCutoff(contest, now);
+  const cacheKey = cutoff ? `lb:frozen:${contestId}` : `lb:${contestId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached) return JSON.parse(cached) as LeaderboardPayload;
+
   const submissions = await prisma.submission.findMany({
-    where: { contestId, verdict: { notIn: ["PENDING", "RUNNING"] } },
+    where: {
+      contestId,
+      verdict: { notIn: ["PENDING", "RUNNING"] },
+      ...(cutoff ? { createdAt: { lt: cutoff } } : {}),
+    },
     select: {
       userId: true,
       problemId: true,
@@ -37,10 +57,31 @@ export async function buildLeaderboard(contestId: string): Promise<LeaderboardPa
     },
   });
 
-  const rows = computeStandings(
-    submissions.map((s) => ({ ...s, createdAt: new Date(s.createdAt) })),
-    { startsAt: contest.startsAt, wrongPenaltyMin: contest.wrongPenaltyMin }
-  );
+  const entries: StandingSubmission[] = submissions.map((s) => ({
+    ...s,
+    createdAt: new Date(s.createdAt),
+  }));
+
+  // Quiz attempts feed the same standings pipeline as a synthetic item.
+  const attempts = await prisma.quizAttempt.findMany({
+    where: { contestId, ...(cutoff ? { submittedAt: { lt: cutoff } } : {}) },
+    select: { userId: true, score: true, maxScore: true, submittedAt: true },
+  });
+  for (const a of attempts) {
+    entries.push({
+      userId: a.userId,
+      problemId: QUIZ_ITEM_ID,
+      score: Math.max(0, a.score), // negative marking floors at 0 on the board
+      maxScore: a.maxScore,
+      createdAt: new Date(a.submittedAt),
+      verdict: "AC",
+    });
+  }
+
+  const rows = computeStandings(entries, {
+    startsAt: contest.startsAt,
+    wrongPenaltyMin: contest.wrongPenaltyMin,
+  });
 
   const users = await prisma.user.findMany({
     where: { id: { in: rows.map((r) => r.userId) } },
@@ -50,7 +91,9 @@ export async function buildLeaderboard(contestId: string): Promise<LeaderboardPa
 
   const payload: LeaderboardPayload = {
     contestId,
-    generatedAt: new Date().toISOString(),
+    generatedAt: now.toISOString(),
+    frozen: cutoff !== null,
+    frozenAt: cutoff?.toISOString() ?? null,
     rows: rows.map((r) => ({
       ...r,
       name: userMap.get(r.userId)?.name ?? "?",
@@ -64,7 +107,7 @@ export async function buildLeaderboard(contestId: string): Promise<LeaderboardPa
 }
 
 export async function invalidateLeaderboard(contestId: string) {
-  await redis.del(`lb:${contestId}`);
+  await redis.del(`lb:${contestId}`, `lb:frozen:${contestId}`);
 }
 
 /**

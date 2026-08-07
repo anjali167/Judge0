@@ -18,6 +18,21 @@ export interface ContestInfo {
   wrongPenaltyMin: number;
 }
 
+/**
+ * Freeze cutoff (spec 5.5): with freezeMin > 0, submissions in the final
+ * freezeMin minutes are hidden from the public board while the contest runs.
+ * After the contest ends the board unfreezes. Returns null when no freeze applies.
+ */
+export function freezeCutoff(
+  contest: { endsAt: Date; freezeMin: number },
+  now: Date
+): Date | null {
+  if (contest.freezeMin <= 0) return null;
+  const cutoff = new Date(contest.endsAt.getTime() - contest.freezeMin * 60000);
+  if (now >= cutoff && now < contest.endsAt) return cutoff;
+  return null;
+}
+
 export interface ProblemCell {
   problemId: string;
   bestScore: number;

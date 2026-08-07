@@ -2,27 +2,43 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import type { ContestDetail } from "@/lib/types";
+import { api, API_URL } from "@/lib/api";
+import type { ContestDetail, InstanceInfo } from "@/lib/types";
 import { Countdown } from "@/components/Countdown";
 import { Leaderboard } from "@/components/Leaderboard";
+import { QuizPanel } from "@/components/QuizPanel";
 
 const DIFF = ["", "Intro", "Easy", "Medium", "Hard", "Expert"];
 
 export default function ContestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [contest, setContest] = useState<ContestDetail | null>(null);
-  const [tab, setTab] = useState<"problems" | "leaderboard">("problems");
+  const [modules, setModules] = useState<InstanceInfo["modules"] | null>(null);
+  const [tab, setTab] = useState<"problems" | "quiz" | "leaderboard">("problems");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
     () => api<ContestDetail>(`/contests/${id}`).then(setContest).catch((e) => setError(e.message)),
     [id]
   );
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    fetch(`${API_URL}/instance`)
+      .then((r) => r.json())
+      .then((i: InstanceInfo) => setModules(i.modules))
+      .catch(() => {});
+  }, [load]);
 
   if (error) return <p className="text-red-600">{error}</p>;
   if (!contest) return <p className="text-neutral-500">Loading…</p>;
+
+  const codeless = contest.problems.length === 0 && contest.hasQuiz;
+  const tabs: { key: typeof tab; label: string }[] = [
+    ...(codeless ? [] : [{ key: "problems" as const, label: "Problems" }]),
+    ...(contest.hasQuiz ? [{ key: "quiz" as const, label: "Quiz" }] : []),
+    { key: "leaderboard", label: "Leaderboard" },
+  ];
+  const activeTab = codeless && tab === "problems" ? "quiz" : tab;
 
   return (
     <div>
@@ -45,28 +61,42 @@ export default function ContestPage({ params }: { params: Promise<{ id: string }
               Ended {new Date(contest.endsAt).toLocaleString()} — problems are now in the practice archive
             </span>
           )}
+          {contest.freezeMin > 0 && contest.status === "running" && (
+            <span className="ml-3 text-xs text-blue-600 dark:text-blue-400">
+              ❄ leaderboard freezes for the final {contest.freezeMin} min
+            </span>
+          )}
         </p>
+        {contest.publicToken && (
+          <p className="mt-1 text-xs text-neutral-500">
+            Public leaderboard:{" "}
+            <Link href={`/public/${contest.publicToken}`} className="underline" target="_blank">
+              sharable link (no login)
+            </Link>
+          </p>
+        )}
       </div>
 
       {contest.status === "upcoming" ? (
         <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-500 dark:border-neutral-700">
-          Problems are hidden until the contest starts.
+          {contest.hasQuiz && contest.problems.length === 0 ? "Questions" : "Problems"} are hidden
+          until the contest starts.
         </div>
       ) : (
         <>
-          <div className="mb-4 flex gap-1 rounded-lg bg-neutral-100 p-1 text-sm w-fit dark:bg-neutral-900">
-            {(["problems", "leaderboard"] as const).map((t) => (
+          <div className="mb-4 flex w-fit gap-1 rounded-lg bg-neutral-100 p-1 text-sm dark:bg-neutral-900">
+            {tabs.map((t) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`rounded-md px-4 py-1.5 capitalize ${tab === t ? "bg-white shadow dark:bg-neutral-700" : "text-neutral-500"}`}
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`rounded-md px-4 py-1.5 ${activeTab === t.key ? "bg-white shadow dark:bg-neutral-700" : "text-neutral-500"}`}
               >
-                {t}
+                {t.label}
               </button>
             ))}
           </div>
 
-          {tab === "problems" ? (
+          {activeTab === "problems" && (
             <div className="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
               <table className="w-full text-sm">
                 <thead className="bg-neutral-100 text-left dark:bg-neutral-900">
@@ -93,10 +123,18 @@ export default function ContestPage({ params }: { params: Promise<{ id: string }
                 </tbody>
               </table>
             </div>
-          ) : (
+          )}
+
+          {activeTab === "quiz" && (
+            <QuizPanel contestId={contest.id} ended={contest.status === "ended"} />
+          )}
+
+          {activeTab === "leaderboard" && (
             <Leaderboard
               contestId={contest.id}
               problems={contest.problems.map((p) => ({ id: p.id, title: p.title, order: p.order }))}
+              hasQuiz={contest.hasQuiz}
+              showMostImproved={contest.status === "ended" && (modules?.mostImproved ?? false)}
             />
           )}
         </>

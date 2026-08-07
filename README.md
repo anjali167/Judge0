@@ -1,14 +1,15 @@
 # Contest Platform
 
 A self-hosted, organization-agnostic contest and evaluation platform — problems with
-hidden test cases, timed contests, multi-language code judging (via self-hosted
-[Judge0 CE](https://github.com/judge0/judge0)), and a real-time leaderboard.
+hidden test cases, timed contests (code + quiz), multi-language judging (via
+self-hosted [Judge0 CE](https://github.com/judge0/judge0)), season ratings, and a
+real-time leaderboard with freeze + public sharing.
 
 **Guiding principle:** participants are evaluated on exactly one thing — what they
 solved, verified by test cases — and that performance is immediately visible on the
 leaderboard. Everything organization-specific is configuration, not code.
 
-## Status: Phase 1 MVP
+## Status: Phase 1 + Phase 2
 
 | Area | Status |
 |---|---|
@@ -22,7 +23,12 @@ leaderboard. Everything organization-specific is configuration, not code.
 | Live leaderboard: WebSocket push + polling fallback, overall + by-group tabs | ✅ |
 | Practice archive with tag/difficulty filters, editorials | ✅ |
 | Admin: problems/contests/groups CRUD, CSV export, judge health, audit log | ✅ |
-| Quiz rounds, season rating, most-improved, plagiarism, freeze | Phase 2/3 |
+| Quiz/MCQ rounds: single/multi/numeric/code-output, negative marking, per-user randomized order, same leaderboard | ✅ |
+| Season rating (rank-percentile EMA) + most-improved tab (Δ vs trailing-k avg) | ✅ |
+| Leaderboard freeze (final N min) + public no-login leaderboard URL | ✅ |
+| Announcements banner · post-contest discussion · instance settings & branding | ✅ |
+| Cross-contest participant reports (CSV) | ✅ |
+| Plagiarism pipeline, tab/paste telemetry, virtual participation, badges | Phase 3 |
 
 ## Quick start (development)
 

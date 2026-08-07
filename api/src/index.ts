@@ -9,6 +9,9 @@ import { problemsRouter } from "./routes/problems.js";
 import { contestsRouter } from "./routes/contests.js";
 import { submissionsRouter } from "./routes/submissions.js";
 import { adminRouter } from "./routes/admin.js";
+import { publicRouter } from "./routes/public.js";
+import { quizRouter } from "./routes/quiz.js";
+import { commentsRouter } from "./routes/comments.js";
 import { wireLeaderboardBroadcast, buildLeaderboard } from "./leaderboard/service.js";
 import { LANGUAGES } from "./judge/judge0.js";
 
@@ -21,11 +24,14 @@ app.get("/languages", (_req, res) =>
   res.json(Object.entries(LANGUAGES).map(([key, v]) => ({ key, label: v.label })))
 );
 
+app.use(publicRouter);
 app.use("/auth", authRouter);
 app.use("/problems", problemsRouter);
 app.use("/contests", contestsRouter);
 app.use("/submissions", submissionsRouter);
 app.use("/admin", adminRouter);
+app.use(quizRouter);
+app.use(commentsRouter);
 
 // central error handler — never leak stack traces
 app.use(

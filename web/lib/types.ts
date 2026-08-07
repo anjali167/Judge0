@@ -49,10 +49,14 @@ export interface ContestDetail {
   id: string;
   title: string;
   description: string | null;
+  type: "CODE" | "QUIZ" | "MIXED";
   startsAt: string;
   endsAt: string;
   scoringMode: string;
   wrongPenaltyMin: number;
+  freezeMin: number;
+  publicToken: string | null;
+  hasQuiz: boolean;
   status: "upcoming" | "running" | "ended";
   problems: { id: string; slug: string; title: string; difficulty: number; points: number; order: number }[];
 }
@@ -104,5 +108,64 @@ export interface LeaderboardRow {
 export interface LeaderboardPayload {
   contestId: string;
   generatedAt: string;
+  frozen: boolean;
+  frozenAt: string | null;
   rows: LeaderboardRow[];
+}
+
+export interface QuizOption {
+  id: string;
+  text: string;
+}
+
+export interface QuizQuestionView {
+  id: string;
+  kind: "SINGLE" | "MULTI" | "NUMERIC" | "CODE_OUTPUT";
+  promptMd: string;
+  codeMd: string | null;
+  marks: number;
+  negativeMarks: number;
+  options: QuizOption[];
+}
+
+export interface QuizPaper {
+  contestId: string;
+  endsAt: string;
+  submitted: boolean;
+  score?: number;
+  maxScore?: number;
+  breakdown?: { questionId: string; status: string; earned: number }[];
+  questions: QuizQuestionView[];
+}
+
+export interface MostImprovedRow {
+  userId: string;
+  name: string;
+  externalId: string | null;
+  groupName: string | null;
+  delta: number;
+  performance: number;
+  rank: number;
+  contestsCounted: number;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface CommentView {
+  id: string;
+  body: string;
+  createdAt: string;
+  user: { id: string; name: string };
+}
+
+export interface InstanceInfo {
+  name: string;
+  signupMode: string;
+  modules: { quiz: boolean; mostImproved: boolean; discussion: boolean };
+  mostImprovedK: number;
 }

@@ -114,3 +114,70 @@ CREATE TABLE "audit_log" (
     "detail" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ==== Phase 2 additions ====
+
+CREATE TYPE "ContestType" AS ENUM ('CODE', 'QUIZ', 'MIXED');
+CREATE TYPE "QuizKind" AS ENUM ('SINGLE', 'MULTI', 'NUMERIC', 'CODE_OUTPUT');
+
+ALTER TABLE "contests"
+    ADD COLUMN "type" "ContestType" NOT NULL DEFAULT 'CODE',
+    ADD COLUMN "freeze_min" INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN "public_token" TEXT UNIQUE,
+    ADD COLUMN "ratings_finalized" BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE "quiz_questions" (
+    "id" TEXT PRIMARY KEY,
+    "contest_id" TEXT NOT NULL REFERENCES "contests"("id") ON DELETE CASCADE,
+    "ordinal" INTEGER NOT NULL,
+    "kind" "QuizKind" NOT NULL,
+    "prompt_md" TEXT NOT NULL,
+    "code_md" TEXT,
+    "options" JSONB NOT NULL,
+    "answer" JSONB NOT NULL,
+    "marks" INTEGER NOT NULL DEFAULT 4,
+    "negative_marks" INTEGER NOT NULL DEFAULT 0,
+    UNIQUE ("contest_id", "ordinal")
+);
+
+CREATE TABLE "quiz_attempts" (
+    "id" TEXT PRIMARY KEY,
+    "user_id" TEXT NOT NULL REFERENCES "users"("id"),
+    "contest_id" TEXT NOT NULL REFERENCES "contests"("id") ON DELETE CASCADE,
+    "answers" JSONB NOT NULL,
+    "score" INTEGER NOT NULL DEFAULT 0,
+    "max_score" INTEGER NOT NULL DEFAULT 0,
+    "breakdown" JSONB,
+    "submitted_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE ("user_id", "contest_id")
+);
+
+CREATE TABLE "ratings" (
+    "id" TEXT PRIMARY KEY,
+    "user_id" TEXT NOT NULL REFERENCES "users"("id"),
+    "contest_id" TEXT NOT NULL REFERENCES "contests"("id") ON DELETE CASCADE,
+    "rating_before" INTEGER NOT NULL,
+    "rating_after" INTEGER NOT NULL,
+    "performance" INTEGER NOT NULL,
+    "rank" INTEGER NOT NULL,
+    "score" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE ("user_id", "contest_id")
+);
+
+CREATE TABLE "comments" (
+    "id" TEXT PRIMARY KEY,
+    "problem_id" TEXT NOT NULL REFERENCES "problems"("id") ON DELETE CASCADE,
+    "user_id" TEXT NOT NULL REFERENCES "users"("id"),
+    "body" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX "comments_problem_id_created_at_idx" ON "comments"("problem_id", "created_at");
+
+CREATE TABLE "announcements" (
+    "id" TEXT PRIMARY KEY,
+    "title" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

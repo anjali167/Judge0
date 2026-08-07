@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomBytes } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import argon2 from "argon2";
 import { z } from "zod";
@@ -180,10 +181,13 @@ adminRouter.get("/problems", async (_req, res) => {
 const contestSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
+  type: z.enum(["CODE", "QUIZ", "MIXED"]).default("CODE"),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
   scoringMode: z.enum(["PARTIAL", "BINARY"]).default("PARTIAL"),
   wrongPenaltyMin: z.number().int().min(0).default(10),
+  freezeMin: z.number().int().min(0).default(0),
+  makePublic: z.boolean().default(false),
   groupScope: z.array(z.string()).default([]),
   problems: z.array(
     z.object({ problemId: z.string(), points: z.number().int().min(0).default(100), order: z.number().int().default(0) })
@@ -193,10 +197,11 @@ const contestSchema = z.object({
 adminRouter.post("/contests", async (req, res) => {
   const parsed = contestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-  const { problems, startsAt, endsAt, ...data } = parsed.data;
+  const { problems, startsAt, endsAt, makePublic, ...data } = parsed.data;
   if (new Date(endsAt) <= new Date(startsAt)) {
     return res.status(400).json({ error: "endsAt must be after startsAt" });
   }
+  const publicToken = makePublic ? randomBytes(12).toString("base64url") : null;
 
   const problemRecords = await prisma.problem.findMany({
     where: { id: { in: problems.map((p) => p.problemId) } },
@@ -207,6 +212,7 @@ adminRouter.post("/contests", async (req, res) => {
   const contest = await prisma.contest.create({
     data: {
       ...data,
+      publicToken,
       startsAt: new Date(startsAt),
       endsAt: new Date(endsAt),
       problems: {
@@ -230,6 +236,116 @@ adminRouter.delete("/contests/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Quiz questions ---------- */
+
+const quizQuestionSchema = z.object({
+  ordinal: z.number().int().min(1),
+  kind: z.enum(["SINGLE", "MULTI", "NUMERIC", "CODE_OUTPUT"]),
+  promptMd: z.string().min(1),
+  codeMd: z.string().optional(),
+  options: z.array(z.object({ id: z.string(), text: z.string() })).default([]),
+  answer: z.union([
+    z.array(z.string()),
+    z.object({ value: z.number(), tolerance: z.number().min(0) }),
+  ]),
+  marks: z.number().int().min(0).default(4),
+  negativeMarks: z.number().int().min(0).default(0),
+});
+
+/** Replace a contest's quiz question set wholesale (simplest authoring model). */
+adminRouter.put("/contests/:id/quiz", async (req, res) => {
+  const parsed = z.array(quizQuestionSchema).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+  const contest = await prisma.contest.findUnique({ where: { id: req.params.id } });
+  if (!contest) return res.status(404).json({ error: "contest not found" });
+
+  for (const q of parsed.data) {
+    if (q.kind !== "NUMERIC") {
+      const ids = new Set(q.options.map((o) => o.id));
+      const ans = q.answer as string[];
+      if (!Array.isArray(ans) || ans.length === 0 || !ans.every((a) => ids.has(a))) {
+        return res.status(400).json({ error: `question ${q.ordinal}: answer ids must reference option ids` });
+      }
+      if (q.kind !== "MULTI" && ans.length !== 1) {
+        return res.status(400).json({ error: `question ${q.ordinal}: exactly one correct option required` });
+      }
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.quizQuestion.deleteMany({ where: { contestId: contest.id } }),
+    prisma.quizQuestion.createMany({
+      data: parsed.data.map((q) => ({ ...q, contestId: contest.id })),
+    }),
+  ]);
+  await audit(req.user!.id, "quiz.replace", contest.id, { count: parsed.data.length });
+  res.json({ ok: true, count: parsed.data.length });
+});
+
+adminRouter.get("/contests/:id/quiz", async (req, res) => {
+  res.json(
+    await prisma.quizQuestion.findMany({
+      where: { contestId: req.params.id },
+      orderBy: { ordinal: "asc" },
+    })
+  );
+});
+
+/* ---------- Ratings ---------- */
+
+adminRouter.post("/contests/:id/finalize-ratings", async (req, res) => {
+  const { finalizeContestRatings } = await import("../rating/service.js");
+  const done = await finalizeContestRatings(req.params.id);
+  await audit(req.user!.id, "contest.finalize_ratings", req.params.id, { done });
+  res.json({ finalized: done });
+});
+
+/* ---------- Announcements ---------- */
+
+adminRouter.post("/announcements", async (req, res) => {
+  const parsed = z
+    .object({ title: z.string().min(1), body: z.string().min(1), active: z.boolean().default(true) })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid payload" });
+  const a = await prisma.announcement.create({ data: parsed.data });
+  await audit(req.user!.id, "announcement.create", a.id);
+  res.status(201).json(a);
+});
+
+adminRouter.put("/announcements/:id", async (req, res) => {
+  const parsed = z
+    .object({ title: z.string().min(1).optional(), body: z.string().min(1).optional(), active: z.boolean().optional() })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid payload" });
+  const a = await prisma.announcement.update({ where: { id: req.params.id }, data: parsed.data });
+  await audit(req.user!.id, "announcement.update", a.id);
+  res.json(a);
+});
+
+adminRouter.get("/announcements", async (_req, res) => {
+  res.json(await prisma.announcement.findMany({ orderBy: { createdAt: "desc" } }));
+});
+
+/* ---------- Instance settings ---------- */
+
+adminRouter.get("/settings", async (_req, res) => {
+  const rows = await prisma.instanceSetting.findMany();
+  res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+});
+
+adminRouter.put("/settings", requireRole("SUPER_ADMIN"), async (req, res) => {
+  const parsed = z.record(z.unknown()).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid payload" });
+  const ALLOWED = new Set(["instance_name", "signup_mode", "modules", "most_improved_k"]);
+  const { setSetting } = await import("../settings.js");
+  for (const [key, value] of Object.entries(parsed.data)) {
+    if (!ALLOWED.has(key)) return res.status(400).json({ error: `unknown setting: ${key}` });
+    await setSetting(key, value);
+  }
+  await audit(req.user!.id, "settings.update", undefined, parsed.data);
+  res.json({ ok: true });
+});
+
 /* ---------- Judge health & exports ---------- */
 
 adminRouter.get("/judge/health", async (_req, res) => {
@@ -249,5 +365,66 @@ adminRouter.get("/contests/:id/export.csv", async (req, res) => {
   );
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename=contest-${req.params.id}.csv`);
+  res.send([header, ...lines].join("\n"));
+});
+
+/**
+ * Cross-contest participant report (spec 5.7): rating trend, solve counts by
+ * difficulty, per-contest ranks — one row per participant, CSV.
+ */
+adminRouter.get("/reports/participants.csv", async (_req, res) => {
+  const users = await prisma.user.findMany({
+    where: { role: "PARTICIPANT" },
+    select: {
+      id: true,
+      externalId: true,
+      name: true,
+      email: true,
+      group: { select: { name: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const solvedByUser = await prisma.submission.groupBy({
+    by: ["userId", "problemId"],
+    where: { verdict: "AC" },
+  });
+  const solvedProblems = await prisma.problem.findMany({
+    select: { id: true, difficulty: true },
+  });
+  const diffMap = new Map(solvedProblems.map((p) => [p.id, p.difficulty]));
+
+  const ratings = await prisma.rating.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { userId: true, ratingAfter: true, rank: true, performance: true },
+  });
+
+  const header =
+    "external_id,name,email,group,contests,current_rating,best_rank,avg_performance,solved_total,solved_easy_1_2,solved_medium_3,solved_hard_4_5";
+  const lines = users.map((u) => {
+    const mine = ratings.filter((r) => r.userId === u.id);
+    const solved = solvedByUser.filter((s) => s.userId === u.id);
+    const byDiff = (lo: number, hi: number) =>
+      solved.filter((s) => {
+        const d = diffMap.get(s.problemId) ?? 0;
+        return d >= lo && d <= hi;
+      }).length;
+    return [
+      u.externalId ?? "",
+      JSON.stringify(u.name),
+      u.email,
+      u.group?.name ?? "",
+      mine.length,
+      mine.length ? mine[mine.length - 1].ratingAfter : "",
+      mine.length ? Math.min(...mine.map((r) => r.rank)) : "",
+      mine.length ? Math.round(mine.reduce((s, r) => s + r.performance, 0) / mine.length) : "",
+      solved.length,
+      byDiff(1, 2),
+      byDiff(3, 3),
+      byDiff(4, 5),
+    ].join(",");
+  });
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=participants.csv");
   res.send([header, ...lines].join("\n"));
 });

@@ -64,11 +64,15 @@ Judge0's own DB holds only transient judging state — no backup needed.
 | Task | How |
 |---|---|
 | Import participants | Admin API `POST /admin/users/import` with `{csv}` — columns `external_id,name,email,group`. Default password = external_id. |
-| Create a contest | `POST /admin/contests` (title, startsAt/endsAt ISO-UTC, problems+points, scoringMode PARTIAL/BINARY, optional groupScope). |
-| Export results | `GET /admin/contests/:id/export.csv` |
+| Create a contest | `POST /admin/contests` (title, `type` CODE/QUIZ/MIXED, startsAt/endsAt ISO-UTC, problems+points, scoringMode PARTIAL/BINARY, `freezeMin` for a frozen finale, `makePublic: true` for a shareable no-login leaderboard URL, optional groupScope). |
+| Author a quiz | `PUT /admin/contests/:id/quiz` with the full question array (SINGLE/MULTI/NUMERIC/CODE_OUTPUT; marks + negativeMarks). Question/option order is auto-randomized per participant. |
+| Share the leaderboard | `makePublic` returns a `publicToken`; the read-only board lives at `/public/<token>` — no login, safe to project. |
+| Finalize season ratings | Automatic on first leaderboard view after a contest ends; force with `POST /admin/contests/:id/finalize-ratings`. |
+| Export results | `GET /admin/contests/:id/export.csv` (per contest) · `GET /admin/reports/participants.csv` (cross-contest: rating, ranks, solves by difficulty) |
+| Post an announcement | `POST /admin/announcements` `{title, body}` — shows as a banner to everyone; deactivate with `PUT /admin/announcements/:id {active:false}` |
 | Release an editorial | `POST /admin/problems/:id/release-editorial` |
 | Check judge health | `GET /admin/judge/health` |
-| Close signups | set instance setting `signup_mode` to `invite` (SQL: `update instance_settings set value='"invite"' where key='signup_mode';`) |
+| Instance settings | `PUT /admin/settings` (super-admin): `instance_name`, `signup_mode` (`open`/`invite`), `modules` (`{quiz, mostImproved, discussion}` toggles), `most_improved_k` |
 
 All admin actions are recorded in `audit_log`.
 

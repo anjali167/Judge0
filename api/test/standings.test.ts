@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeStandings,
   foldProblem,
+  freezeCutoff,
   type StandingSubmission,
   type ContestInfo,
 } from "../src/leaderboard/standings.js";
@@ -186,5 +187,31 @@ describe("computeStandings — ordering", () => {
       contest
     );
     expect(rows.map((r) => r.userId)).toEqual(["amy", "zed"]);
+  });
+});
+
+describe("freezeCutoff", () => {
+  const endsAt = new Date("2026-08-09T13:00:00Z");
+  const c = (freezeMin: number) => ({ endsAt, freezeMin });
+  const at = (iso: string) => new Date(iso);
+
+  it("no freeze configured -> null", () => {
+    expect(freezeCutoff(c(0), at("2026-08-09T12:59:00Z"))).toBeNull();
+  });
+  it("before the freeze window -> null", () => {
+    expect(freezeCutoff(c(15), at("2026-08-09T12:44:59Z"))).toBeNull();
+  });
+  it("inside the freeze window -> cutoff at endsAt - freezeMin", () => {
+    expect(freezeCutoff(c(15), at("2026-08-09T12:50:00Z"))).toEqual(
+      at("2026-08-09T12:45:00Z")
+    );
+    // boundary: exactly at cutoff is frozen
+    expect(freezeCutoff(c(15), at("2026-08-09T12:45:00Z"))).toEqual(
+      at("2026-08-09T12:45:00Z")
+    );
+  });
+  it("after the contest ends -> unfrozen (null)", () => {
+    expect(freezeCutoff(c(15), at("2026-08-09T13:00:00Z"))).toBeNull();
+    expect(freezeCutoff(c(15), at("2026-08-09T14:00:00Z"))).toBeNull();
   });
 });

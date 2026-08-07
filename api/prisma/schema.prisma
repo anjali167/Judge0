@@ -50,8 +50,11 @@ model User {
   group      Group?   @relation(fields: [groupId], references: [id])
   createdAt  DateTime @default(now()) @map("created_at")
 
-  submissions Submission[]
-  auditLogs   AuditLog[]
+  submissions  Submission[]
+  auditLogs    AuditLog[]
+  quizAttempts QuizAttempt[]
+  ratings      Rating[]
+  comments     Comment[]
 
   @@map("users")
 }
@@ -84,6 +87,7 @@ model Problem {
   testCases       TestCase[]
   contestProblems ContestProblem[]
   submissions     Submission[]
+  comments        Comment[]
 
   @@map("problems")
 }
@@ -104,23 +108,120 @@ model TestCase {
   @@map("test_cases")
 }
 
+enum ContestType {
+  CODE
+  QUIZ
+  MIXED
+}
+
 model Contest {
   id            String      @id @default(cuid())
   title         String
   description   String?
+  type          ContestType @default(CODE)
   startsAt      DateTime    @map("starts_at")
   endsAt        DateTime    @map("ends_at")
   scoringMode   ScoringMode @default(PARTIAL) @map("scoring_mode")
   // penalty config: minutes added per wrong attempt on a solved problem
   wrongPenaltyMin Int       @default(10) @map("wrong_penalty_min")
+  // leaderboard freeze for the final N minutes (0 = no freeze)
+  freezeMin     Int         @default(0) @map("freeze_min")
+  // public read-only leaderboard token (null = not public)
+  publicToken   String?     @unique @map("public_token")
+  ratingsFinalized Boolean  @default(false) @map("ratings_finalized")
   groupScope    String[]    @map("group_scope") // empty = open to all groups
   visible       Boolean     @default(true)
   createdAt     DateTime    @default(now()) @map("created_at")
 
-  problems    ContestProblem[]
-  submissions Submission[]
+  problems      ContestProblem[]
+  submissions   Submission[]
+  quizQuestions QuizQuestion[]
+  quizAttempts  QuizAttempt[]
+  ratings       Rating[]
 
   @@map("contests")
+}
+
+enum QuizKind {
+  SINGLE
+  MULTI
+  NUMERIC
+  CODE_OUTPUT
+}
+
+model QuizQuestion {
+  id            String   @id @default(cuid())
+  contestId     String   @map("contest_id")
+  contest       Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  ordinal       Int
+  kind          QuizKind
+  promptMd      String   @map("prompt_md")
+  codeMd        String?  @map("code_md") // rendered code block for CODE_OUTPUT
+  // SINGLE/MULTI/CODE_OUTPUT: [{id, text}] — correct ids in `answer`.
+  // NUMERIC: options empty; answer = {value, tolerance}
+  options       Json
+  answer        Json
+  marks         Int      @default(4)
+  negativeMarks Int      @default(0) @map("negative_marks")
+
+  @@unique([contestId, ordinal])
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  contestId   String   @map("contest_id")
+  contest     Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  answers     Json // { [questionId]: string[] | number }
+  score       Int      @default(0)
+  maxScore    Int      @default(0) @map("max_score")
+  breakdown   Json? // per-question verdicts
+  submittedAt DateTime @default(now()) @map("submitted_at")
+
+  @@unique([userId, contestId]) // one attempt per participant
+  @@map("quiz_attempts")
+}
+
+model Rating {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id])
+  contestId    String   @map("contest_id")
+  contest      Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  ratingBefore Int      @map("rating_before")
+  ratingAfter  Int      @map("rating_after")
+  performance  Int
+  rank         Int
+  score        Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, contestId])
+  @@map("ratings")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  problemId String   @map("problem_id")
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([problemId, createdAt])
+  @@map("comments")
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("announcements")
 }
 
 model ContestProblem {

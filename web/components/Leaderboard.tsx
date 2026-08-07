@@ -2,22 +2,28 @@
 
 /**
  * Live leaderboard: joins the contest room over Socket.IO; falls back to
- * 15s polling if the socket can't connect (spec 5.5).
+ * 15s polling if the socket can't connect (spec 5.5). Tabs: overall,
+ * by-group, and (post-contest, if enabled) most-improved.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { api, API_URL, getToken } from "@/lib/api";
-import type { LeaderboardPayload } from "@/lib/types";
+import type { LeaderboardPayload, MostImprovedRow } from "@/lib/types";
 
 export function Leaderboard({
   contestId,
   problems,
+  hasQuiz = false,
+  showMostImproved = false,
 }: {
   contestId: string;
   problems: { id: string; title: string; order: number }[];
+  hasQuiz?: boolean;
+  showMostImproved?: boolean;
 }) {
   const [payload, setPayload] = useState<LeaderboardPayload | null>(null);
-  const [tab, setTab] = useState<"overall" | "groups">("overall");
+  const [tab, setTab] = useState<"overall" | "groups" | "improved">("overall");
+  const [improved, setImproved] = useState<MostImprovedRow[] | null>(null);
   const [live, setLive] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
@@ -48,10 +54,24 @@ export function Leaderboard({
     };
   }, [contestId]);
 
-  const ordered = useMemo(
-    () => [...problems].sort((a, b) => a.order - b.order),
-    [problems]
-  );
+  useEffect(() => {
+    if (tab === "improved" && improved === null) {
+      api<MostImprovedRow[]>(`/contests/${contestId}/most-improved`)
+        .then(setImproved)
+        .catch(() => setImproved([]));
+    }
+  }, [tab, improved, contestId]);
+
+  const items = useMemo(() => {
+    const ordered = [...problems].sort((a, b) => a.order - b.order);
+    const list = ordered.map((p, i) => ({
+      id: p.id,
+      label: String.fromCharCode(65 + i),
+      title: p.title,
+    }));
+    if (hasQuiz) list.push({ id: "quiz", label: "Quiz", title: "Quiz round" });
+    return list;
+  }, [problems, hasQuiz]);
 
   const groups = useMemo(() => {
     if (!payload) return [];
@@ -72,9 +92,9 @@ export function Leaderboard({
             <th className="px-3 py-2 w-12">#</th>
             <th className="px-3 py-2">Participant</th>
             <th className="px-3 py-2">Group</th>
-            {ordered.map((p, i) => (
-              <th key={p.id} className="px-3 py-2 text-center" title={p.title}>
-                {String.fromCharCode(65 + i)}
+            {items.map((it) => (
+              <th key={it.id} className="px-3 py-2 text-center" title={it.title}>
+                {it.label}
               </th>
             ))}
             <th className="px-3 py-2 text-right">Score</th>
@@ -90,10 +110,10 @@ export function Leaderboard({
                 {r.externalId && <span className="ml-2 text-xs text-neutral-500">{r.externalId}</span>}
               </td>
               <td className="px-3 py-2 text-neutral-500">{r.groupName ?? "—"}</td>
-              {ordered.map((p) => {
-                const cell = r.problems[p.id];
+              {items.map((it) => {
+                const cell = r.problems[it.id];
                 return (
-                  <td key={p.id} className="px-3 py-2 text-center">
+                  <td key={it.id} className="px-3 py-2 text-center">
                     {cell ? (
                       <span
                         className={
@@ -118,40 +138,91 @@ export function Leaderboard({
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={5 + ordered.length} className="px-3 py-8 text-center text-neutral-500">No submissions yet.</td></tr>
+            <tr><td colSpan={5 + items.length} className="px-3 py-8 text-center text-neutral-500">No submissions yet.</td></tr>
           )}
         </tbody>
       </table>
     </div>
   );
 
+  const improvedTable = () => (
+    <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+      <table className="w-full min-w-[480px] text-sm">
+        <thead className="bg-neutral-100 text-left dark:bg-neutral-900">
+          <tr>
+            <th className="px-3 py-2">Participant</th>
+            <th className="px-3 py-2">Group</th>
+            <th className="px-3 py-2 text-right">This contest</th>
+            <th className="px-3 py-2 text-right">Δ vs trailing avg</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(improved ?? []).map((r) => (
+            <tr key={r.userId} className="border-t border-neutral-200 dark:border-neutral-800">
+              <td className="px-3 py-2">
+                <span className="font-medium">{r.name}</span>
+                {r.externalId && <span className="ml-2 text-xs text-neutral-500">{r.externalId}</span>}
+              </td>
+              <td className="px-3 py-2 text-neutral-500">{r.groupName ?? "—"}</td>
+              <td className="px-3 py-2 text-right">
+                rank {r.rank} · perf {r.performance}
+              </td>
+              <td className={`px-3 py-2 text-right font-semibold ${r.delta >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                {r.delta >= 0 ? "+" : ""}{r.delta}
+              </td>
+            </tr>
+          ))}
+          {improved !== null && improved.length === 0 && (
+            <tr>
+              <td colSpan={4} className="px-3 py-8 text-center text-neutral-500">
+                Not enough contest history yet — participants need at least one prior rated contest.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const tabs: { key: typeof tab; label: string }[] = [
+    { key: "overall", label: "Overall" },
+    { key: "groups", label: "By group" },
+    ...(showMostImproved ? [{ key: "improved" as const, label: "Most improved" }] : []),
+  ];
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-4">
         <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-sm dark:bg-neutral-900">
-          {(["overall", "groups"] as const).map((t) => (
+          {tabs.map((t) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded-md px-3 py-1 ${tab === t ? "bg-white shadow dark:bg-neutral-700" : "text-neutral-500"}`}
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`rounded-md px-3 py-1 ${tab === t.key ? "bg-white shadow dark:bg-neutral-700" : "text-neutral-500"}`}
             >
-              {t === "overall" ? "Overall" : "By group"}
+              {t.label}
             </button>
           ))}
         </div>
+        {payload.frozen && (
+          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+            ❄ frozen — final standings revealed at contest end
+          </span>
+        )}
         <span className={`ml-auto flex items-center gap-1.5 text-xs ${live ? "text-green-600" : "text-neutral-400"}`}>
           <span className={`h-2 w-2 rounded-full ${live ? "bg-green-500" : "bg-neutral-400"}`} />
           {live ? "live" : "polling"}
         </span>
       </div>
-      {tab === "overall"
-        ? table(payload.rows)
-        : groups.map((g) => (
-            <div key={g.name} className="mb-6">
-              <h3 className="mb-2 font-semibold">{g.name}</h3>
-              {table(g.rows, true)}
-            </div>
-          ))}
+      {tab === "overall" && table(payload.rows)}
+      {tab === "groups" &&
+        groups.map((g) => (
+          <div key={g.name} className="mb-6">
+            <h3 className="mb-2 font-semibold">{g.name}</h3>
+            {table(g.rows, true)}
+          </div>
+        ))}
+      {tab === "improved" && improvedTable()}
     </div>
   );
 }

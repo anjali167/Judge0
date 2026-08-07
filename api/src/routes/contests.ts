@@ -2,6 +2,8 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { buildLeaderboard } from "../leaderboard/service.js";
+import { finalizeContestRatings, getMostImproved } from "../rating/service.js";
+import { getModules, getSetting } from "../settings.js";
 
 export const contestsRouter = Router();
 
@@ -47,6 +49,7 @@ contestsRouter.get("/:id", requireAuth, async (req, res) => {
           problem: { select: { id: true, slug: true, title: true, difficulty: true, tags: true } },
         },
       },
+      _count: { select: { quizQuestions: true } },
     },
   });
   if (!contest || !contest.visible) return res.status(404).json({ error: "not found" });
@@ -58,14 +61,22 @@ contestsRouter.get("/:id", requireAuth, async (req, res) => {
   const started = now >= contest.startsAt;
   const ended = now >= contest.endsAt;
 
+  if (ended && !contest.ratingsFinalized) {
+    finalizeContestRatings(contest.id).catch(() => {});
+  }
+
   res.json({
     id: contest.id,
     title: contest.title,
     description: contest.description,
+    type: contest.type,
     startsAt: contest.startsAt,
     endsAt: contest.endsAt,
     scoringMode: contest.scoringMode,
     wrongPenaltyMin: contest.wrongPenaltyMin,
+    freezeMin: contest.freezeMin,
+    publicToken: contest.publicToken,
+    hasQuiz: contest._count.quizQuestions > 0 && (await getModules()).quiz,
     status: ended ? "ended" : started ? "running" : "upcoming",
     problems: started
       ? contest.problems.map((cp) => ({ ...cp.problem, points: cp.points, order: cp.order }))
@@ -74,7 +85,23 @@ contestsRouter.get("/:id", requireAuth, async (req, res) => {
 });
 
 contestsRouter.get("/:id/leaderboard", requireAuth, async (req, res) => {
-  const payload = await buildLeaderboard(req.params.id);
+  // Organizers see through the freeze; participants see the frozen board.
+  const ignoreFreeze = req.user!.role !== "PARTICIPANT";
+  const payload = await buildLeaderboard(req.params.id, { ignoreFreeze });
   if (!payload) return res.status(404).json({ error: "not found" });
   res.json(payload);
+});
+
+/** Most-improved tab (spec 5.5) — available once the contest has ended. */
+contestsRouter.get("/:id/most-improved", requireAuth, async (req, res) => {
+  if (!(await getModules()).mostImproved) {
+    return res.status(404).json({ error: "most-improved view disabled" });
+  }
+  const contest = await prisma.contest.findUnique({ where: { id: req.params.id } });
+  if (!contest) return res.status(404).json({ error: "not found" });
+  if (new Date() < contest.endsAt) {
+    return res.status(400).json({ error: "available after the contest ends" });
+  }
+  const k = await getSetting("most_improved_k", 3);
+  res.json(await getMostImproved(contest.id, k));
 });

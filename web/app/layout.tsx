@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
+import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 
 export const metadata: Metadata = {
   title: "Contest Platform",
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen">
         <Nav />
+        <AnnouncementsBanner />
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
       </body>
     </html>
