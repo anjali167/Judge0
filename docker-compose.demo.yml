@@ -10,7 +10,9 @@ services:
     build:
       context: ./web
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:4000
+        # NOTE: host port 4010, not 4000 — port 4000 is the Firebase Emulator
+        # Suite UI's default port and commonly already bound on dev laptops.
+        NEXT_PUBLIC_API_URL: http://localhost:4010
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -28,7 +30,9 @@ services:
       WEB_ORIGIN: http://localhost:3000
       PORT: 4000
     ports:
-      - "4000:4000"
+      # host:container — container stays on 4000 internally, only the
+      # host-side mapping moves to dodge the Firebase Emulator UI conflict.
+      - "4010:4000"
     depends_on: [db, redis]
 
   worker:
