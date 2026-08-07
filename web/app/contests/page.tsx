@@ -15,9 +15,14 @@ function status(c: ContestListItem): "upcoming" | "running" | "ended" {
 
 export default function ContestsPage() {
   const [contests, setContests] = useState<ContestListItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api<ContestListItem[]>("/contests").then(setContests);
+    api<ContestListItem[]>("/contests")
+      .then(setContests)
+      .catch(() => setError("Can't reach the server — is the API running?"));
   }, []);
+
+  if (error) return <p className="text-red-600">{error}</p>;
 
   const sections: ["running" | "upcoming" | "ended", string][] = [
     ["running", "Live now"],

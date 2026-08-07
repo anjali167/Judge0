@@ -11,12 +11,15 @@ services:
       context: ./web
       args:
         NEXT_PUBLIC_API_URL: http://localhost:4000
+    restart: unless-stopped
     ports:
       - "3000:3000"
 
   api:
     build: ./api
-    command: sh -c "npx prisma db push --skip-generate && node dist/index.js"
+    restart: unless-stopped
+    # retry db push until postgres is ready (depends_on doesn't wait for readiness)
+    command: sh -c "until npx prisma db push --skip-generate; do echo 'db not ready, retrying…'; sleep 3; done && node dist/index.js"
     environment: &api-env
       DATABASE_URL: postgresql://platform:platform@db:5432/platform
       REDIS_URL: redis://redis:6379
@@ -30,6 +33,7 @@ services:
 
   worker:
     build: ./api
+    restart: unless-stopped
     command: node dist/judge/worker-main.js
     environment: *api-env
     depends_on: [db, redis, mock-judge]

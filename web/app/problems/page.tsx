@@ -14,10 +14,12 @@ export default function ProblemsPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    api<ProblemListItem[]>("/problems").then((p) => {
-      setProblems(p);
-      setLoaded(true);
-    });
+    api<ProblemListItem[]>("/problems")
+      .then((p) => {
+        setProblems(p);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
   }, []);
 
   const tags = useMemo(
