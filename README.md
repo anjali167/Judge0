@@ -52,6 +52,20 @@ npm run dev                     # UI on :3000
 
 Judge0 for development: `docker compose up judge0-server judge0-workers judge0-db judge0-redis`
 
+## Try it locally in 2 minutes (demo mode)
+
+No Linux box needed — runs on any machine with Docker Desktop. Uses a mock
+judge (instant verdicts, no real execution), so every feature is clickable:
+
+```bash
+docker compose -f docker-compose.demo.yml up -d --build
+docker compose -f docker-compose.demo.yml exec api npm run seed
+open http://localhost:3000        # admin@demo.local / admin1234
+```
+
+Demo verdict tricks: any submission is accepted; include `WRONG` in your source
+for a WA, `SLOW` for a TLE — handy for demoing partial scoring live.
+
 ## Production deployment
 
 See [docs/runbook.md](docs/runbook.md). Short version:

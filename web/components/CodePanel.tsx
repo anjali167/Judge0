@@ -11,7 +11,15 @@ import type { SubmissionDetail, SubmissionListItem } from "@/lib/types";
 import { VerdictBadge } from "./VerdictBadge";
 import { DiffView } from "./DiffView";
 
-const Monaco = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+const Monaco = dynamic(
+  () =>
+    import("@monaco-editor/react").then((m) => {
+      // Self-hosted Monaco assets (no CDN — restricted networks must work)
+      m.loader.config({ paths: { vs: "/monaco/vs" } });
+      return m.default;
+    }),
+  { ssr: false }
+);
 
 const TEMPLATES: Record<string, string> = {
   cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    // your code\n    return 0;\n}\n`,

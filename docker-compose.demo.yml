@@ -1,0 +1,56 @@
+# DEMO MODE — full platform with a MOCK judge (no real code execution).
+# For laptops (incl. macOS) where Judge0's Linux sandbox can't run.
+#   docker compose -f docker-compose.demo.yml up -d --build
+#   docker compose -f docker-compose.demo.yml exec api npm run seed
+# Then open http://localhost:3000 — admin@demo.local / admin1234.
+# Demo verdicts: any submission passes; put "WRONG" in your source for WA,
+# "SLOW" for TLE. Use the real docker-compose.yml for actual judging.
+services:
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+
+  api:
+    build: ./api
+    command: sh -c "npx prisma db push --skip-generate && node dist/index.js"
+    environment: &api-env
+      DATABASE_URL: postgresql://platform:platform@db:5432/platform
+      REDIS_URL: redis://redis:6379
+      JUDGE0_URL: http://mock-judge:2358
+      JWT_SECRET: demo-only-not-secret
+      WEB_ORIGIN: http://localhost:3000
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on: [db, redis]
+
+  worker:
+    build: ./api
+    command: node dist/judge/worker-main.js
+    environment: *api-env
+    depends_on: [db, redis, mock-judge]
+
+  mock-judge:
+    image: node:22-slim
+    command: node /srv/server.mjs
+    volumes:
+      - ./deploy/mock-judge/server.mjs:/srv/server.mjs:ro
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+      POSTGRES_DB: platform
+    volumes:
+      - demo-pg-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  demo-pg-data:
