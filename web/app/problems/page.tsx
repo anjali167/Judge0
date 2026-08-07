@@ -16,7 +16,7 @@ export default function ProblemsPage() {
   useEffect(() => {
     api<ProblemListItem[]>("/problems")
       .then((p) => {
-        setProblems(p);
+        if (Array.isArray(p)) setProblems(p);
         setLoaded(true);
       })
       .catch(() => setLoaded(true));

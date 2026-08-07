@@ -18,7 +18,10 @@ export default function ContestsPage() {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     api<ContestListItem[]>("/contests")
-      .then(setContests)
+      .then((data) => {
+        if (Array.isArray(data)) setContests(data);
+        else setError("Unexpected response from the server.");
+      })
       .catch(() => setError("Can't reach the server — is the API running?"));
   }, []);
 
