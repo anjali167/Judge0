@@ -1,0 +1,13 @@
+# Replace :80 with your domain (e.g. contests.example.org) to get automatic HTTPS.
+:80 {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:4000
+	}
+	handle /socket.io/* {
+		reverse_proxy api:4000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

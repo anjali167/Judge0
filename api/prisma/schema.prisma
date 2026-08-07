@@ -1,0 +1,195 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+  engineType   = "client" // Rust-free client: no native engine binaries at runtime
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PARTICIPANT
+  ORGANIZER
+  SUPER_ADMIN
+}
+
+enum TestCaseKind {
+  SAMPLE
+  HIDDEN
+}
+
+enum ScoringMode {
+  PARTIAL
+  BINARY
+}
+
+enum Verdict {
+  PENDING
+  RUNNING
+  AC
+  WA
+  TLE
+  MLE
+  RE
+  CE
+  IE // internal error
+}
+
+model User {
+  id         String   @id @default(cuid())
+  externalId String?  @map("external_id") // roll no / employee id
+  name       String
+  email      String   @unique
+  hash       String
+  role       Role     @default(PARTICIPANT)
+  groupId    String?  @map("group_id")
+  group      Group?   @relation(fields: [groupId], references: [id])
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  submissions Submission[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model Group {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  users       User[]
+
+  @@map("groups")
+}
+
+model Problem {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  title       String
+  statementMd String      @map("statement_md")
+  difficulty  Int         @default(1) // 1..5
+  tags        String[]
+  timeLimit   Float       @default(1) @map("time_limit") // seconds, base (C/C++)
+  memLimit    Int         @default(262144) @map("mem_limit") // KB
+  editorialMd String?     @map("editorial_md")
+  editorialReleased Boolean @default(false) @map("editorial_released")
+  version     Int         @default(1)
+  archived    Boolean     @default(false)
+  authorId    String?     @map("author_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  testCases       TestCase[]
+  contestProblems ContestProblem[]
+  submissions     Submission[]
+
+  @@map("problems")
+}
+
+model TestCase {
+  id             String       @id @default(cuid())
+  problemId      String       @map("problem_id")
+  problem        Problem      @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  kind           TestCaseKind
+  ordinal        Int
+  input          String
+  expectedOutput String       @map("expected_output")
+  weight         Int          @default(1)
+
+  results SubmissionResult[]
+
+  @@unique([problemId, kind, ordinal])
+  @@map("test_cases")
+}
+
+model Contest {
+  id            String      @id @default(cuid())
+  title         String
+  description   String?
+  startsAt      DateTime    @map("starts_at")
+  endsAt        DateTime    @map("ends_at")
+  scoringMode   ScoringMode @default(PARTIAL) @map("scoring_mode")
+  // penalty config: minutes added per wrong attempt on a solved problem
+  wrongPenaltyMin Int       @default(10) @map("wrong_penalty_min")
+  groupScope    String[]    @map("group_scope") // empty = open to all groups
+  visible       Boolean     @default(true)
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  problems    ContestProblem[]
+  submissions Submission[]
+
+  @@map("contests")
+}
+
+model ContestProblem {
+  contestId String  @map("contest_id")
+  contest   Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problemId String  @map("problem_id")
+  problem   Problem @relation(fields: [problemId], references: [id])
+  points    Int     @default(100)
+  order     Int     @default(0)
+  // snapshot of problem version used in this contest (spec 5.1: versioning)
+  problemVersion Int @default(1) @map("problem_version")
+
+  @@id([contestId, problemId])
+  @@map("contest_problems")
+}
+
+model Submission {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  problemId   String   @map("problem_id")
+  problem     Problem  @relation(fields: [problemId], references: [id])
+  contestId   String?  @map("contest_id")
+  contest     Contest? @relation(fields: [contestId], references: [id])
+  language    String // judge0 language key, e.g. "cpp", "python"
+  source      String
+  verdict     Verdict  @default(PENDING)
+  score       Int      @default(0) // points earned (weighted, scaled to contest points)
+  maxScore    Int      @default(0) @map("max_score")
+  execTimeMs  Int?     @map("exec_time_ms") // max across cases
+  memoryKb    Int?     @map("memory_kb")
+  compileOutput String? @map("compile_output") // shown only for CE
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  results SubmissionResult[]
+
+  @@index([userId, problemId])
+  @@index([contestId, createdAt])
+  @@map("submissions")
+}
+
+model SubmissionResult {
+  submissionId String     @map("submission_id")
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  testCaseId   String     @map("test_case_id")
+  testCase     TestCase   @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  verdict      Verdict
+  timeMs       Int?       @map("time_ms")
+  memoryKb     Int?       @map("memory_kb")
+
+  @@id([submissionId, testCaseId])
+  @@map("submission_results")
+}
+
+model InstanceSetting {
+  key   String @id
+  value Json
+
+  @@map("instance_settings")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String
+  target    String?
+  detail    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
