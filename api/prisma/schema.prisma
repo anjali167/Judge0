@@ -1,9 +1,10 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  runtime      = "nodejs"
-  moduleFormat = "esm"
-  engineType   = "client" // Rust-free client: no native engine binaries at runtime
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  engineType          = "client" // Rust-free client: no native engine binaries at runtime
+  importFileExtension = "js" // compiled dist/ must import .js, not .ts
 }
 
 datasource db {
